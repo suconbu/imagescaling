@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"/>
+<title>image scaling</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+  /* main {
+    display: flex;
+    flex-flow: row;
+    min-height: 100vh;
+  } */
+  input[type="range"] {
+    color: black;
+  }
+  .control-panel {
+    visibility: hidden;
+    position: fixed;
+    /* flex: 0 0 300px; */
+    width: 300px;
+    min-height: 400px;
+    background-color: #e0e0e0;
+    box-sizing: border-box;
+    padding: 5px;
+    margin: 20px;
+    border: 1px solid #ccc;
+  }
+  .content-panel {
+    /* flex: 1 1 auto; */
+    display: flex;
+    flex-direction: row;
+    background-color: #eee;
+    box-sizing: border-box;
+    padding: 10px;
+    text-align: center;
+  }
+  .section-panel {
+    background-color: #e4e4e4;
+    margin: 10px;
+    padding: 10px;
+  }
+  canvas {
+    background-color: white;
+  }
+</style>
+
+<main>
+  <section class="control-panel">
+    <ul>
+      <li>Filter</li>
+      <label><input type="radio" value="nearest" checked/>Nearest neighbor</label><br>
+      <label><input type="radio" value="bilinear"/>Bilinear</label>
+      <li>Scale</li>
+      <div style="vertical-align: middle;">
+        <input id="range1" type="range"/><input type="text" style="width: 50px;"/>
+      </div>
+      <input id="range2" type="range"/>
+    </ul>
+  </section>
+  <article id="content-panel" class="content-panel">
+    <!-- <section id="nearest-panel" class="section-panel">
+      <h1>Nearest neighbor</h1>
+      <div id="nearest-image-container" class="image-container"></div>
+    </section>
+    <section id="bilinear-panel" class="section-panel">
+      <h1>Bilinear</h1>
+      <div id="bilinear-image-container" class="image-container"></div>
+    </section> -->
+  </article>
+</main>
+
+<script>
+  const baseImage = document.createElement("img");
+  baseImage.src = "sample/fujiya.gif";
+
+  const contentPanel = document.getElementById("content-panel");
+  const types = ["nearest", "bilinear"];
+  const imageContainerMap = {};
+  (function setupContentPanel() {
+    for(let type of types) {
+      const section = document.createElement("section");
+      section.id = type + "-panel";
+      section.className = "section-panel";
+
+      const caption = document.createElement("h1");
+      caption.appendChild(document.createTextNode(type))
+      section.appendChild(caption);
+
+      const container = document.createElement("div");
+      container.className = "image-container";
+      imageContainerMap[type] = container;
+      section.appendChild(container);
+
+      contentPanel.appendChild(section);
+    }
+  })();
+  //const contentPanel = document.getElementById("content-panel");
+  //originalimageCanvases.width = image.
+  const imageCanvases = [];
+  //const dstimageCanvases = document.getElementById("canvas2");
+  // const srcImage = new Image();//document.getElementById("test1-img");
+  // srcImage.src = "sample/fujiya.gif";
+  // srcImage.onload = (e) => imageLoaded(originalimageCanvases, e.currentTarget);
+
+  //const resizeRatios = [1.5];
+  const resizeRatios = [1.25, 1.5, 1.75, 2.0];
+
+  baseImage.addEventListener("load", (e) => {
+    (function setupCanvas() {
+      for(type of types) {
+        const imageContainer = imageContainerMap[type];
+        const baseImageCanvas = document.createElement("canvas");
+        baseImageCanvas.width = baseImage.width;
+        baseImageCanvas.height = baseImage.height;
+        baseImageCanvas.getContext("2d").drawImage(baseImage, 0, 0);
+        imageContainer.appendChild(document.createTextNode("x1.0"));
+        imageContainer.appendChild(document.createElement("br"));
+        imageContainer.appendChild(baseImageCanvas);
+        for(let ratio of resizeRatios) {
+          const resizedImageCanvas = document.createElement("canvas");
+          updateResizedImageCanvas(baseImageCanvas, resizedImageCanvas, type, ratio);
+          imageCanvases.push(resizedImageCanvas);
+          imageContainer.appendChild(document.createElement("br"));
+          imageContainer.appendChild(document.createElement("br"));
+          imageContainer.appendChild(document.createTextNode("x" + ratio));
+        imageContainer.appendChild(document.createElement("br"));
+          imageContainer.appendChild(resizedImageCanvas);
+        }
+      }
+    })();
+  }, false);
+
+  function updateResizedImageCanvas(srcCanvas, dstCanvas, type, ratio) {
+    const srcContext = srcCanvas.getContext("2d");
+    const dstContext = dstCanvas.getContext("2d");
+
+    const sw = srcCanvas.width, sh = srcCanvas.height;
+    const dw = sw * ratio, dh = sh * ratio;
+    const srcImageData = srcContext.getImageData(0, 0, sw, sh);
+    const dstImageData = dstContext.createImageData(dw, dh);
+
+    if(type == "bilinear") {
+      resizeByBilinear(srcImageData, dstImageData);
+    }
+    else {
+      resizeByNearest(srcImageData, dstImageData);
+    }
+
+    dstCanvas.width = dw;
+    dstCanvas.height = dh;
+
+    dstContext.putImageData(dstImageData, 0, 0);
+  }
+
+  function resizeByNearest(src, dst) {
+    const sw = src.width, sh = src.height;
+    const dw = dst.width, dh = dst.height;
+    const wr = sw / dw, hr = sh / dh;
+    for(let dy = 0; dy < dh; dy++) {
+      const sy = Math.min(Math.round(hr * dy), sh - 1);
+
+      for(let dx = 0; dx < dw; dx++) {
+        const sx = Math.min(Math.round(wr * dx), sw - 1);
+
+        const si = (sy * sw + sx) * 4;
+        const di = (dy * dw + dx) * 4;
+        dst.data[di + 0] = src.data[si + 0];
+        dst.data[di + 1] = src.data[si + 1];
+        dst.data[di + 2] = src.data[si + 2];
+        dst.data[di + 3] = src.data[si + 3];
+      }
+    }
+  }
+
+  function resizeByBilinear(src, dst) {
+    // https://www.rainorshine.asia/2008/05/16/post428.html
+    const sw = src.width, sh = src.height;
+    const dw = dst.width, dh = dst.height;
+    const wr = sw / dw, hr = sh / dh;
+    for(let dy = 0; dy < dh; dy++) {
+      const sy = hr * dy;
+      const y0 = Math.floor(sy);
+      const y1 = Math.min(y0 + 1, sh - 1);
+      const cy1 = sy - y0;
+      const cy0 = 1 - cy1;
+
+      for(let dx = 0; dx < dw; dx++) {
+        const sx = wr * dx;
+        const x0 = Math.floor(sx);
+        const x1 = Math.min(x0 + 1, sw - 1);
+        const cx1 = sx - x0;
+        const cx0 = 1 - cx1;
+
+        const si00 = (y0 * sw + x0) * 4;
+        const si01 = (y1 * sw + x0) * 4;
+        const si10 = (y0 * sw + x1) * 4;
+        const si11 = (y1 * sw + x1) * 4;
+
+        const r0 = src.data[si00 + 0] * cx0 + src.data[si10 + 0] * cx1;
+        const r1 = src.data[si01 + 0] * cx0 + src.data[si11 + 0] * cx1;
+        const g0 = src.data[si00 + 1] * cx0 + src.data[si10 + 1] * cx1;
+        const g1 = src.data[si01 + 1] * cx0 + src.data[si11 + 1] * cx1;
+        const b0 = src.data[si00 + 2] * cx0 + src.data[si10 + 2] * cx1;
+        const b1 = src.data[si01 + 2] * cx0 + src.data[si11 + 2] * cx1;
+        const a0 = src.data[si00 + 3] * cx0 + src.data[si10 + 3] * cx1;
+        const a1 = src.data[si01 + 3] * cx0 + src.data[si11 + 3] * cx1;
+
+        const di = (dy * dw + dx) * 4;
+        dst.data[di + 0] = Math.min(255, Math.round(r0 * cy0 + r1 * cy1));
+        dst.data[di + 1] = Math.min(255, Math.round(g0 * cy0 + g1 * cy1));
+        dst.data[di + 2] = Math.min(255, Math.round(b0 * cy0 + b1 * cy1));
+        dst.data[di + 3] = Math.min(255, Math.round(a0 * cy0 + a1 * cy1));
+      }
+    }
+  }
+</script>
