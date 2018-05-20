@@ -54,7 +54,10 @@
     margin: 10px;
     padding: 10px;
     box-sizing: border-box;
-    transition: all 0.2s linear;
+    transition: opacity 0.2s linear;
+  }
+  .section-panel-remove {
+    opacity: 0;
   }
   .image-container {
     display: flex;
@@ -267,8 +270,10 @@
       section.id = type + "-panel";
       section.className = "section-panel";
       section.addEventListener("dblclick", (e) => {
-        //section.className += " section-panel-removing";
-        contentPanel.removeChild(section);
+        section.className += " section-panel-remove";
+        section.addEventListener("transitionend", (e) => {
+          setTimeout(() => contentPanel.removeChild(section), 200);
+        }, false);
         removedTypes.push(type);
       }, false);
 

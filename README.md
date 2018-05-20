@@ -12,8 +12,16 @@
 
 ![Screenshot](https://github.com/suconbu/imagescaling/blob/master/screenshot1.png)
 
+### 操作方法
+
+| 操作 | 説明 |
+| -- | -- |
+| 矢印キー左右 | 画像を切り替える |
+| 画像をクリック | ポップアップをキープする |
+| アルゴリズム名(bilinearなど)をクリック | そのアルゴリズムを非表示にする |
+
 ### メモ
-倍率とかはこのあたりで変更できます。
+画像や倍率はこのあたりで変更できます。
 
 ```javascript
   // imagescaling.html
