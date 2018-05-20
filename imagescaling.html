@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8"/>
-<title>image scaling</title>
+<title>Image scaling</title>
 
 <style>
   html, body {
@@ -19,26 +19,11 @@
   input[type="range"] {
     color: black;
   }
-  .setting-panel {
-    visibility: hidden;
-    position: fixed;
-    /* flex: 0 0 300px; */
-    width: 200px;
-    min-height: 200px;
-    background-color: #eee;
-    box-sizing: border-box;
-    padding: 5px;
-    margin: 20px;
-    border: 1px solid #ddd;
-  }
   .content-panel {
-    /* flex: 1 1 auto; */
     display: flex;
     flex-direction: row;
     box-sizing: border-box;
     padding: 10px;
-    /* padding-left: 350px; */
-    /* text-align: left; */
   }
   .section-panel {
     background-color: #eee;
@@ -60,28 +45,31 @@
 </style>
 
 <main>
-  <section class="setting-panel">
-    <ul>
-      <li>Filter</li>
-      <div id="filter-checkbox-container"></div>
-    </ul>
-  </section>
   <article id="content-panel" class="content-panel"></article>
 </main>
 
 <script>
-  const imagePaths = ["spaceshuttle.png","notebook.png","fujiya.png","kfc.png","mos.png"];
+  const imagePaths = [
+    "spaceshuttle.png",
+    "notebook.png",
+    "fujiya.png",
+    "kfc.png",
+    "mos.png"
+  ];
   // const imagePaths = ["spaceshuttle.png","notebook.png","calbee.gif","fujiya.gif","images.jpg","kao.jpg","kfc.png","mos.png"];
   const resizeFunctionMap = {
-    nearest: {func: resizeByNearest, parameter: null},
+    //nearest: {func: resizeByNearest, parameter: null},
     bilinear: {func: resizeByBilinear, parameter: null},
     bicubic: {func: resizeByBiqubic, parameter: null},
-    // lanczos2: {func: resizeByRanczos, parameter: 2},
-    // lanczos3: {func: resizeByRanczos, parameter: 3},
+    // lanczos2: {func: resizeByLanczos, parameter: 2},
+    lanczos3: {func: resizeByLanczos, parameter: 3},
     spline16: {func: resizeBySpline, parameter: 2},
     spline36: {func: resizeBySpline, parameter: 3},
   }
-  const resizeRatios = [1.0, 1.3, 1.7, 2.0, 2.3, 2.7];
+  const resizeRatios = [1.0, 1.3, 1.7, 2.0, 2.3, 2.7, 3.0];
+
+  const sincTable = [];
+  const sincIndexScale = 100;
 
   const baseImage = document.createElement("img");
   let currentImageIndex = 0;
@@ -133,24 +121,14 @@
     })();
   }, false);
 
-  (function setupSettingPanel() {
-    const settingPanel = document.getElementById("filter-checkbox-container");
-    settingPanel.innerHTML = "";
-    for(let type in resizeFunctionMap) {
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.name = type + "-checkbox";
-      input.value = type;
-      input.checked = type != "lanczos3";
-      input.addEventListener("changed", (e) => filterChanged(), false);
-
-      const label = document.createElement("label");
-      label.appendChild(input);
-      label.appendChild(document.createTextNode(type));
-      label.appendChild(document.createElement("br"));
-
-      settingPanel.appendChild(label);
+  (function setupSincTable() {
+    console.time("setupFastSin");
+    const sEnd = 3 * Math.PI * sincIndexScale;
+    sincTable.push(1.0);
+    for(let s = 1; s <= sEnd; s++) {
+      sincTable.push(Math.sin(s / sincIndexScale * Math.PI) / (s / sincIndexScale * Math.PI));
     }
+    console.timeEnd("setupFastSin");
   })();
 
   function setupContentPanel() {
@@ -222,48 +200,6 @@
     resizeByFunc(src, dst, 1, (d) => (d <= 1) ? (1 - d) : 0);
   }
 
-  function resizeByBilinearFast(src, dst) {
-    // https://www.rainorshine.asia/2008/05/16/post428.html
-    const sw = src.width, sh = src.height;
-    const dw = dst.width, dh = dst.height;
-    const wr = sw / dw, hr = sh / dh;
-    for(let dy = 0; dy < dh; dy++) {
-      const sy = hr * dy;
-      const y0 = Math.floor(sy);
-      const y1 = Math.min(y0 + 1, sh - 1);
-      const cy1 = sy - y0;
-      const cy0 = 1 - cy1;
-
-      for(let dx = 0; dx < dw; dx++) {
-        const sx = wr * dx;
-        const x0 = Math.floor(sx);
-        const x1 = Math.min(x0 + 1, sw - 1);
-        const cx1 = sx - x0;
-        const cx0 = 1 - cx1;
-
-        const si00 = (y0 * sw + x0) * 4;
-        const si01 = (y1 * sw + x0) * 4;
-        const si10 = (y0 * sw + x1) * 4;
-        const si11 = (y1 * sw + x1) * 4;
-
-        const r0 = src.data[si00 + 0] * cx0 + src.data[si10 + 0] * cx1;
-        const r1 = src.data[si01 + 0] * cx0 + src.data[si11 + 0] * cx1;
-        const g0 = src.data[si00 + 1] * cx0 + src.data[si10 + 1] * cx1;
-        const g1 = src.data[si01 + 1] * cx0 + src.data[si11 + 1] * cx1;
-        const b0 = src.data[si00 + 2] * cx0 + src.data[si10 + 2] * cx1;
-        const b1 = src.data[si01 + 2] * cx0 + src.data[si11 + 2] * cx1;
-        const a0 = src.data[si00 + 3] * cx0 + src.data[si10 + 3] * cx1;
-        const a1 = src.data[si01 + 3] * cx0 + src.data[si11 + 3] * cx1;
-
-        const di = (dy * dw + dx) * 4;
-        dst.data[di + 0] = Math.min(255, Math.round(r0 * cy0 + r1 * cy1));
-        dst.data[di + 1] = Math.min(255, Math.round(g0 * cy0 + g1 * cy1));
-        dst.data[di + 2] = Math.min(255, Math.round(b0 * cy0 + b1 * cy1));
-        dst.data[di + 3] = Math.min(255, Math.round(a0 * cy0 + a1 * cy1));
-      }
-    }
-  }
-
   function resizeByBiqubic(src, dst) {
     resizeByFunc(src, dst, 2, (d, n) =>
       (d <= 1) ? (((d - 2) * d) * d) + 1 :
@@ -272,11 +208,12 @@
     );
   }
 
-  function resizeByRanczos(src, dst, n) {
+  function resizeByLanczos(src, dst, n) {
     // https://www.rainorshine.asia/2015/10/12/post2602.html
-    const sinc = (a) => Math.sin(a * Math.PI) / (a * Math.PI);
     resizeByFunc(src, dst, n, (d, n) =>
-      (d == 0) ? 1 : ((d < n) ? (sinc(d) * sinc(d / n)) : 0)
+      (d == 0) ? 1 :
+      (d < n) ? (sincTable[Math.floor(d * sincIndexScale)] * sincTable[Math.floor(d / n * sincIndexScale)]) :
+      0
     );
   }
 
@@ -298,7 +235,7 @@
       );
     }
     else {
-      console.error("Unsupported n:" + n);
+      console.error("Unsupported!! -> n:" + n);
     }
   }
 
