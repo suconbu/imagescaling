@@ -31,14 +31,14 @@
   .thumbnail-img {
     width: 40px;
     height: 40px;
-    transition: width .2s, height .2s;
+    transition: width 0.2s, height 0.2s;
   }
   .selected-thumbnail-img, .thumbnail-img:hover {
     width: 80px;
     height: 80px;
-    box-shadow: 0 2px 5px #888;
+    box-shadow: 0 2px 5px #444;
     z-index: 1;
-    transition: width .2s, height .2s;
+    transition: width 0.2s, height 0.2s;
   }
   .content-panel {
     display: flex;
@@ -54,7 +54,7 @@
     margin: 10px;
     padding: 10px;
     box-sizing: border-box;
-    transition: all .2s linear;
+    transition: all 0.2s linear;
   }
   .image-container {
     display: flex;
@@ -65,12 +65,22 @@
     background-color: #ddd;
     margin: 10px;
   }
+  .popupimage-item {
+    position: fixed;
+    box-shadow: 0 2px 5px #444;
+    visibility: hidden;
+    z-index: 2;
+  }
+  .keepimage-item {
+    position: fixed;
+    box-shadow: 0 2px 5px #444;
+    visibility: hidden;
+    z-index: 1;
+  }
 </style>
 
 <main>
-  <header>
-    <div id="thumbnail-container" class="thumbnail-container"></div>
-  </header>
+  <header id="thumbnail-container" class="thumbnail-container"></header>
   <article id="content-panel" class="content-panel"></article>
 </main>
 
@@ -102,12 +112,15 @@
     spline36: {func: resizeBySpline, parameter: 3},
   }
   const resizeRatios = [1.0, 1.3, 1.7, 2.0, 2.3];
+  const popupZoomRatio = 3.0;
 
   const sincTable = [];
   const sincIndexScale = 100;
 
   const thumbnailImages = [];
   let selectedImage = null;
+
+  const removedTypes = [];
 
   const imageContainerMap = {};
 
@@ -122,7 +135,7 @@
   })();
 
   (function setupHeader() {
-    const thumbnailContainer = document.getElementById("thumbnail-container");
+    const thumbnailContainer = document.querySelector("#thumbnail-container");
     for(let path of imagePaths) {
       const img = document.createElement("img");
       img.className = "thumbnail-img";
@@ -173,7 +186,46 @@
   function setupCanvas() {
     const w = selectedImage.naturalWidth;
     const h = selectedImage.naturalHeight;
-    console.log(selectedImage.src + ": " + w + "x" + h)
+
+    const popupImageCanvas = document.createElement("canvas");
+    popupImageCanvas.className = "popupimage-item";
+    const keepImageCanvas = document.createElement("canvas");
+    keepImageCanvas.className = "keepimage-item";
+
+    const main = document.querySelector("main");
+    main.appendChild(popupImageCanvas);
+    main.appendChild(keepImageCanvas);
+    main.addEventListener("click", (e) => {
+      if(e.target.className == "image-item-canvas") {
+        keepImageCanvas.style.left = popupImageCanvas.style.left;
+        keepImageCanvas.style.top = popupImageCanvas.style.top;
+        keepImageCanvas.width = popupImageCanvas.width;
+        keepImageCanvas.height = popupImageCanvas.height;
+        keepImageCanvas.getContext("2d").drawImage(popupImageCanvas, 0, 0);
+        keepImageCanvas.style.visibility = "visible";
+      }
+      else {
+        keepImageCanvas.style.visibility = "hidden";
+      }
+    }, false);
+    main.addEventListener("mousemove", (e) => {
+      if(e.target.className == "image-item-canvas") {
+        const srcCanvas = createResizedImageCanvas(e.target, "nearest", popupZoomRatio);
+        popupImageCanvas.width = srcCanvas.width;
+        popupImageCanvas.height = srcCanvas.height;
+        popupImageCanvas.style.left = e.clientX + 10 + "px";
+        popupImageCanvas.style.top = e.clientY - popupImageCanvas.height - 10 + "px";
+        // 描画時に拡縮すると予想外のフィルタが適用されるかもしれないので自分で拡大する
+        popupImageCanvas.getContext("2d").drawImage(srcCanvas, 0, 0);
+        popupImageCanvas.style.visibility = "visible";
+      }
+      else {
+        popupImageCanvas.style.visibility = "hidden";
+      }
+    }, false);
+
+    console.log(selectedImage.src + ": " + w + "x" + h);
+    // imageContainerMap はこの中で設定
     setupContentPanel();
     for(type in resizeFunctionMap) {
       const imageContainer = imageContainerMap[type];
@@ -181,6 +233,7 @@
       baseImageCanvas.width = w;
       baseImageCanvas.height = h;
       baseImageCanvas.getContext("2d").drawImage(selectedImage, 0, 0);
+
       console.group(type);
       console.time("total");
       for(let ratio of resizeRatios) {
@@ -191,6 +244,8 @@
         else {
           canvas = createResizedImageCanvas(baseImageCanvas, type, ratio);
         }
+        canvas.className = "image-item-canvas";
+
         const imageItem = document.createElement("div");
         imageItem.className = "image-item";
         imageItem.appendChild(document.createTextNode("x" + ratio));
@@ -204,15 +259,17 @@
   }
 
   function setupContentPanel() {
-    const contentPanel = document.getElementById("content-panel");
+    const contentPanel = document.querySelector("#content-panel");
     contentPanel.innerHTML = "";
     for(let type in resizeFunctionMap) {
+      if(removedTypes.indexOf(type) >= 0) continue;
       const section = document.createElement("section");
       section.id = type + "-panel";
       section.className = "section-panel";
       section.addEventListener("dblclick", (e) => {
         //section.className += " section-panel-removing";
         contentPanel.removeChild(section);
+        removedTypes.push(type);
       }, false);
 
       const caption = document.createElement("h1");
@@ -240,9 +297,15 @@
     const dstImageData = dstContext.createImageData(dw, dh);
 
     const timeLabel = "x" + ratio.toFixed(2);
-    console.time(timeLabel);
-    resizeFunctionMap[type].func(srcImageData, dstImageData, resizeFunctionMap[type].parameter);
-    console.timeEnd(timeLabel);
+    if(resizeFunctionMap[type]) {
+      console.time(timeLabel);
+      resizeFunctionMap[type].func(srcImageData, dstImageData, resizeFunctionMap[type].parameter);
+      console.timeEnd(timeLabel);
+    }
+    else {
+      // なかったらNearestでやっておく
+      resizeByNearest(srcImageData, dstImageData);
+    }
 
     dstCanvas.width = dw;
     dstCanvas.height = dh;
